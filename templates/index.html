@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - OpenAthena{% endblock %}
+{% block page_title %}<i class="fas fa-chart-line"></i> Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-history"></i> Recent Queries</h5>
+            </div>
+            <div class="card-body">
+                <div class="recent-queries" id="recentQueries">
+                    <!-- Will be populated by JavaScript -->
+                    <p class="text-muted">No recent queries found</p>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('query') }}" class="btn btn-primary">New Query</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-table"></i> Available Tables</h5>
+            </div>
+            <div class="card-body">
+                <div id="tablesOverview">
+                    <!-- Will be populated by JavaScript -->
+                    <p class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading tables...</p>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('tables') }}" class="btn btn-primary">View All Tables</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-heartbeat"></i> System Health</h5>
+            </div>
+            <div class="card-body">
+                <div class="row" id="healthOverview">
+                    <!-- Will be populated by JavaScript -->
+                    <div class="col-md-4 text-center">
+                        <div class="health-indicator">
+                            <i class="fas fa-circle-notch fa-spin fa-3x"></i>
+                            <h6 class="mt-2">API</h6>
+                            <p class="text-muted">Checking...</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="health-indicator">
+                            <i class="fas fa-circle-notch fa-spin fa-3x"></i>
+                            <h6 class="mt-2">Tables</h6>
+                            <p class="text-muted">Checking...</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <div class="health-indicator">
+                            <i class="fas fa-circle-notch fa-spin fa-3x"></i>
+                            <h6 class="mt-2">Query</h6>
+                            <p class="text-muted">Checking...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('health') }}" class="btn btn-primary">Detailed Health Report</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-code"></i> Quick Query</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('query') }}" method="post">
+                    <div class="mb-3">
+                        <textarea name="query" id="quickQuery" class="form-control" rows="4" placeholder="Enter your SQL query here...">SELECT * FROM test_table LIMIT 10;</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Run Query</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize CodeMirror on the quick query textarea
+    const editor = CodeMirror.fromTextArea(document.getElementById('quickQuery'), {
+        mode: 'text/x-sql',
+        theme: 'darcula',
+        lineNumbers: true,
+        autofocus: false,
+        indentWithTabs: true,
+        smartIndent: true,
+        lineWrapping: true,
+        extraKeys: {"Ctrl-Space": "autocomplete"}
+    });
+
+    // Load tables data
+    function loadTables() {
+        fetch("{{ url_for('tables') }}")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.text();
+            })
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const tables = doc.querySelectorAll('.table-item');
+                
+                let tableHtml = '';
+                if (tables.length > 0) {
+                    for (let i = 0; i < Math.min(5, tables.length); i++) {
+                        tableHtml += `<div class="table-overview-item">${tables[i].outerHTML}</div>`;
+                    }
+                    if (tables.length > 5) {
+                        tableHtml += `<p class="text-center mt-3">+ ${tables.length - 5} more tables</p>`;
+                    }
+                } else {
+                    tableHtml = '<p class="text-muted">No tables available</p>';
+                }
+                
+                document.getElementById('tablesOverview').innerHTML = tableHtml;
+            })
+            .catch(error => {
+                console.error('Error fetching tables:', error);
+                document.getElementById('tablesOverview').innerHTML = 
+                    '<p class="text-danger">Error loading tables. Please check your connection.</p>';
+            });
+    }
+
+    // Load health data
+    function loadHealth() {
+        fetch("{{ url_for('health') }}")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.text();
+            })
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const healthCards = doc.querySelectorAll('.health-card');
+                
+                let healthHtml = '';
+                if (healthCards.length > 0) {
+                    healthCards.forEach(card => {
+                        const section = card.querySelector('.health-title').innerText;
+                        const status = card.querySelector('.health-status').dataset.status;
+                        const message = card.querySelector('.health-message').innerText;
+                        
+                        const statusColorClass = status === 'healthy' ? 'text-success' : 
+                                                 status === 'degraded' ? 'text-warning' : 'text-danger';
+                        
+                        healthHtml += `
+                        <div class="col-md-4 text-center">
+                            <div class="health-indicator">
+                                <i class="fas fa-circle fa-3x ${statusColorClass}"></i>
+                                <h6 class="mt-2">${section}</h6>
+                                <p class="text-muted">${message}</p>
+                            </div>
+                        </div>`;
+                    });
+                } else {
+                    healthHtml = `
+                    <div class="col-12">
+                        <p class="text-danger text-center">Unable to load health information</p>
+                    </div>`;
+                }
+                
+                document.getElementById('healthOverview').innerHTML = healthHtml;
+            })
+            .catch(error => {
+                console.error('Error fetching health status:', error);
+                document.getElementById('healthOverview').innerHTML = 
+                    '<div class="col-12"><p class="text-danger text-center">Error loading health status</p></div>';
+            });
+    }
+
+    // Load recent queries from local storage
+    function loadRecentQueries() {
+        try {
+            const recentQueries = JSON.parse(localStorage.getItem('recentQueries')) || [];
+            const queriesEl = document.getElementById('recentQueries');
+            
+            if (recentQueries.length === 0) {
+                queriesEl.innerHTML = '<p class="text-muted">No recent queries found</p>';
+                return;
+            }
+            
+            let html = '<div class="list-group">';
+            recentQueries.slice(0, 5).forEach(query => {
+                const truncatedQuery = query.text.length > 50 
+                    ? query.text.substring(0, 50) + '...' 
+                    : query.text;
+                
+                html += `
+                <a href="{{ url_for('query') }}?q=${encodeURIComponent(query.text)}" 
+                   class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 text-truncate">${truncatedQuery}</h6>
+                        <small>${new Date(query.timestamp).toLocaleString()}</small>
+                    </div>
+                </a>`;
+            });
+            html += '</div>';
+            
+            queriesEl.innerHTML = html;
+        } catch (e) {
+            console.error('Error loading recent queries:', e);
+            document.getElementById('recentQueries').innerHTML = 
+                '<p class="text-muted">No recent queries found</p>';
+        }
+    }
+
+    // Initialize the dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTables();
+        loadHealth();
+        loadRecentQueries();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Tables - OpenAthena{% endblock %}
+{% block page_title %}<i class="fas fa-table"></i> Tables{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-table"></i> Available Tables</h5>
+                <div>
+                    <button id="refreshTables" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if tables %}
+                    <div class="row">
+                        {% for table_name, table_info in tables.items() %}
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100 table-item">
+                                    <div class="card-header">
+                                        <h6 class="table-name mb-0">{{ table_name }}</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if table_info.columns %}
+                                            <div class="table-columns">
+                                                <p class="text-muted mb-2">Columns:</p>
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Name</th>
+                                                                <th>Type</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for column in table_info.columns %}
+                                                                <tr>
+                                                                    <td>{{ column.name }}</td>
+                                                                    <td><code>{{ column.type }}</code></td>
+                                                                </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        {% else %}
+                                            <p class="text-muted">Column information not available</p>
+                                        {% endif %}
+
+                                        {% if table_info.type %}
+                                            <p><strong>Type:</strong> {{ table_info.type }}</p>
+                                        {% endif %}
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="d-flex">
+                                            <a href="{{ url_for('query') }}?q=SELECT * FROM {{ table_name }} LIMIT 100;" class="btn btn-sm btn-primary me-2">
+                                                <i class="fas fa-search"></i> Query Table
+                                            </a>
+                                            <button class="btn btn-sm btn-outline-secondary table-info-btn" 
+                                                    data-table="{{ table_name }}">
+                                                <i class="fas fa-info-circle"></i> Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No tables available. Check your connection settings or catalog configuration.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Table Info Modal -->
+<div class="modal fade" id="tableInfoModal" tabindex="-1" aria-labelledby="tableInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tableInfoModalLabel">Table Information</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="tableInfoModalBody">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="queryTableBtn">Query Table</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Refresh tables
+        document.getElementById('refreshTables').addEventListener('click', function() {
+            window.location.reload();
+        });
+        
+        // Table info modal
+        const tableInfoModal = new bootstrap.Modal(document.getElementById('tableInfoModal'));
+        const tableInfoBtns = document.querySelectorAll('.table-info-btn');
+        
+        tableInfoBtns.forEach(btn => {
+            btn.addEventListener('click', function() {
+                const tableName = this.dataset.table;
+                document.getElementById('tableInfoModalLabel').textContent = tableName;
+                
+                // Get sample data
+                const modalBody = document.getElementById('tableInfoModalBody');
+                modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+                
+                // Set up query button
+                const queryTableBtn = document.getElementById('queryTableBtn');
+                queryTableBtn.addEventListener('click', function() {
+                    window.location.href = `{{ url_for('query') }}?q=SELECT * FROM ${tableName} LIMIT 100;`;
+                });
+                
+                // Fetch sample data
+                fetch('{{ url_for("api_execute_query") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: `SELECT * FROM ${tableName} LIMIT 5;`
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let html = '<h6>Sample Data</h6>';
+                        
+                        if (data.data.data && data.data.data.length > 0) {
+                            html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr>';
+                            
+                            // Headers
+                            data.data.schema.forEach(col => {
+                                html += `<th>${col.name}</th>`;
+                            });
+                            html += '</tr></thead><tbody>';
+                            
+                            // Rows
+                            data.data.data.forEach(row => {
+                                html += '<tr>';
+                                data.data.schema.forEach(col => {
+                                    html += `<td>${row[col.name]}</td>`;
+                                });
+                                html += '</tr>';
+                            });
+                            
+                            html += '</tbody></table></div>';
+                            
+                            if (data.data.data.length === 0) {
+                                html += '<div class="alert alert-info">No data in table</div>';
+                            }
+                        } else {
+                            html += '<div class="alert alert-info">No sample data available</div>';
+                        }
+                        
+                        // Add table statistics
+                        html += `
+                        <h6 class="mt-3">Table Statistics</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-body py-2">
+                                        <div class="d-flex justify-content-between">
+                                            <span>Row Count (estimate):</span>
+                                            <span id="rowCountEstimate">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card mb-3">
+                                    <div class="card-body py-2">
+                                        <div class="d-flex justify-content-between">
+                                            <span>Column Count:</span>
+                                            <span>${data.data.schema ? data.data.schema.length : 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                        
+                        modalBody.innerHTML = html;
+                        
+                        // Get row count estimate
+                        fetch('{{ url_for("api_execute_query") }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                query: `SELECT COUNT(*) AS row_count FROM ${tableName}`
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(countData => {
+                            if (countData.success && countData.data.data && countData.data.data.length > 0) {
+                                document.getElementById('rowCountEstimate').textContent = 
+                                    countData.data.data[0].row_count.toLocaleString();
+                            } else {
+                                document.getElementById('rowCountEstimate').textContent = 'N/A';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching row count:', error);
+                            document.getElementById('rowCountEstimate').textContent = 'Error';
+                        });
+                        
+                    } else {
+                        modalBody.innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6><i class="fas fa-exclamation-triangle"></i> Error</h6>
+                            <p>${data.error || 'Failed to fetch sample data'}</p>
+                        </div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching table data:', error);
+                    modalBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-exclamation-triangle"></i> Error</h6>
+                        <p>Failed to fetch table data: ${error.message}</p>
+                    </div>`;
+                });
+                
+                tableInfoModal.show();
+            });
+        });
+    });
+</script>
+{% endblock %}

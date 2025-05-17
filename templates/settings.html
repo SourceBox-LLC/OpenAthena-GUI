@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - OpenAthena{% endblock %}
+{% block page_title %}<i class="fas fa-cog"></i> Settings{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-server"></i> Connection Settings</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('settings') }}" method="post">
+                    <div class="mb-3">
+                        <label for="openathena_url" class="form-label">OpenAthena API URL</label>
+                        <input type="url" class="form-control" id="openathena_url" name="openathena_url" 
+                               value="{{ openathena_url }}" placeholder="http://localhost:8000">
+                        <div class="form-text">The URL of your OpenAthena API server.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                    <button type="button" id="testConnection" class="btn btn-outline-primary">Test Connection</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-sliders-h"></i> UI Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="theme" class="form-label">Theme</label>
+                    <select class="form-select" id="theme">
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="auto">Auto (System Default)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="queryPageSize" class="form-label">Query Result Page Size</label>
+                    <select class="form-select" id="queryPageSize">
+                        <option value="100">100 rows</option>
+                        <option value="500">500 rows</option>
+                        <option value="1000">1000 rows</option>
+                        <option value="5000">5000 rows</option>
+                    </select>
+                </div>
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="formatSQL">
+                    <label class="form-check-label" for="formatSQL">Auto-format SQL queries</label>
+                </div>
+                <button type="button" id="saveUISettings" class="btn btn-primary">Save UI Settings</button>
+                <button type="button" id="resetUISettings" class="btn btn-outline-secondary">Reset to Defaults</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> About OpenAthena</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>OpenAthena</h6>
+                        <p>A DuckDB-powered analytics engine designed to work seamlessly with OpenS3, providing SQL query capabilities over data stored in OpenS3 buckets.</p>
+                        
+                        <h6>Version Information</h6>
+                        <ul>
+                            <li><strong>OpenAthena UI:</strong> 1.0.0</li>
+                            <li><strong>OpenAthena API:</strong> <span id="apiVersion">Checking...</span></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Resources</h6>
+                        <ul>
+                            <li><a href="https://github.com/SourceBox-LLC/OpenAthena" target="_blank">GitHub Repository</a></li>
+                            <li><a href="https://github.com/SourceBox-LLC/OpenAthena/docs" target="_blank">Documentation</a></li>
+                            <li><a href="https://github.com/SourceBox-LLC/OpenAthena/issues" target="_blank">Report Issues</a></li>
+                        </ul>
+                        
+                        <div class="d-grid gap-2 mt-3">
+                            <a href="https://github.com/SourceBox-LLC/OpenAthena" target="_blank" class="btn btn-outline-primary">
+                                <i class="fab fa-github"></i> View on GitHub
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load UI settings from localStorage
+        const theme = localStorage.getItem('theme') || 'light';
+        const queryPageSize = localStorage.getItem('queryPageSize') || '100';
+        const formatSQL = localStorage.getItem('formatSQL') === 'true';
+        
+        document.getElementById('theme').value = theme;
+        document.getElementById('queryPageSize').value = queryPageSize;
+        document.getElementById('formatSQL').checked = formatSQL;
+        
+        // Save UI settings
+        document.getElementById('saveUISettings').addEventListener('click', function() {
+            const theme = document.getElementById('theme').value;
+            const queryPageSize = document.getElementById('queryPageSize').value;
+            const formatSQL = document.getElementById('formatSQL').checked;
+            
+            localStorage.setItem('theme', theme);
+            localStorage.setItem('queryPageSize', queryPageSize);
+            localStorage.setItem('formatSQL', formatSQL.toString());
+            
+            alert('UI settings saved successfully!');
+            
+            // Apply theme if changed
+            if (theme !== localStorage.getItem('theme')) {
+                applyTheme(theme);
+            }
+        });
+        
+        // Reset UI settings
+        document.getElementById('resetUISettings').addEventListener('click', function() {
+            if (confirm('Reset all UI settings to default values?')) {
+                localStorage.removeItem('theme');
+                localStorage.removeItem('queryPageSize');
+                localStorage.removeItem('formatSQL');
+                
+                document.getElementById('theme').value = 'light';
+                document.getElementById('queryPageSize').value = '100';
+                document.getElementById('formatSQL').checked = false;
+                
+                alert('UI settings reset to defaults.');
+            }
+        });
+        
+        // Test connection
+        document.getElementById('testConnection').addEventListener('click', function() {
+            const openathenaUrl = document.getElementById('openathena_url').value;
+            
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+            this.disabled = true;
+            
+            fetch(`${openathenaUrl}/health`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'ok') {
+                        alert('Connection successful! OpenAthena API is reachable.');
+                    } else {
+                        alert(`Connection successful, but server status is: ${data.status}`);
+                    }
+                })
+                .catch(error => {
+                    alert(`Connection failed: ${error.message}`);
+                })
+                .finally(() => {
+                    this.innerHTML = 'Test Connection';
+                    this.disabled = false;
+                });
+        });
+        
+        // Check API version
+        function checkAPIVersion() {
+            const openathenaUrl = '{{ openathena_url }}';
+            const versionSpan = document.getElementById('apiVersion');
+            
+            fetch(`${openathenaUrl}/health`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.version) {
+                        versionSpan.textContent = data.version;
+                    } else {
+                        versionSpan.textContent = 'Unknown';
+                    }
+                })
+                .catch(error => {
+                    versionSpan.textContent = 'Not available';
+                    console.error('Error fetching API version:', error);
+                });
+        }
+        
+        checkAPIVersion();
+        
+        // Theme handling
+        function applyTheme(theme) {
+            // In a real implementation, this would switch between CSS files or classes
+            console.log('Theme changed to:', theme);
+        }
+    });
+</script>
+{% endblock %}

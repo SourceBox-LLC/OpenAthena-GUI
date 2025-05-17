@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Query Editor - OpenAthena{% endblock %}
+{% block page_title %}<i class="fas fa-code"></i> Query Editor{% endblock %}
+
+{% block content %}
+<div class="query-workspace">
+    <!-- Query Editor Section -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5><i class="fas fa-code"></i> SQL Query</h5>
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary btn-sm" id="formatQuery">
+                    <i class="fas fa-indent"></i> Format
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" id="clearQuery">
+                    <i class="fas fa-eraser"></i> Clear
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <form id="queryForm" action="{{ url_for('query') }}" method="post">
+                <div class="mb-3">
+                    <div id="queryEditorContainer">
+                        <textarea name="query" id="queryEditor" class="form-control" rows="8">{{ query if query else 'SELECT * FROM test_table LIMIT 10;' }}</textarea>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Run Query
+                    </button>
+                    <div class="query-metadata">
+                        {% if execution_time is defined %}
+                            <span class="badge bg-info text-dark">
+                                <i class="fas fa-clock"></i> {{ execution_time }} ms
+                            </span>
+                        {% endif %}
+                        <span id="lineCount" class="badge bg-secondary">
+                            <i class="fas fa-list-ol"></i> Lines: 1
+                        </span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5><i class="fas fa-table"></i> Results</h5>
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary btn-sm" id="downloadCSV" {% if not success %} disabled {% endif %}>
+                    <i class="fas fa-download"></i> Download CSV
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" id="downloadJSON" {% if not success %} disabled {% endif %}>
+                    <i class="fas fa-download"></i> Download JSON
+                </button>
+            </div>
+        </div>
+        <div class="card-body result-container">
+            {% if success %}
+                {% if result.schema is defined and result.data is defined %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    {% for column in result.schema %}
+                                        <th>{{ column.name }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in result.data %}
+                                    <tr>
+                                        {% for column in result.schema %}
+                                            <td>{{ row[column.name] }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if result.data|length == 0 %}
+                        <div class="alert alert-info">
+                            Query executed successfully, but returned no rows.
+                        </div>
+                    {% else %}
+                        <div class="text-muted small">
+                            <i class="fas fa-info-circle"></i> Showing {{ result.data|length }} rows
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover table-striped">
+                            <thead>
+                                <tr>
+                                    {% for key in result.keys() %}
+                                        <th>{{ key }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    {% for value in result.values() %}
+                                        <td>{{ value }}</td>
+                                    {% endfor %}
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            {% elif error %}
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Error</h6>
+                    <pre class="error-message">{{ error }}</pre>
+                </div>
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> Run a query to see results
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Table browser sidebar -->
+<div class="table-browser">
+    <div class="card">
+        <div class="card-header">
+            <h6><i class="fas fa-table"></i> Available Tables</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-browser-content" id="tableBrowser">
+                <p class="text-center my-3"><i class="fas fa-spinner fa-spin"></i> Loading tables...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize CodeMirror on the query textarea
+    const editor = CodeMirror.fromTextArea(document.getElementById('queryEditor'), {
+        mode: 'text/x-sql',
+        theme: 'darcula',
+        lineNumbers: true,
+        autofocus: true,
+        indentWithTabs: true,
+        smartIndent: true,
+        lineWrapping: true,
+        extraKeys: {"Ctrl-Space": "autocomplete"},
+        hintOptions: {tables: {}}
+    });
+
+    // Line count update
+    function updateLineCount() {
+        const lineCount = editor.lineCount();
+        document.getElementById('lineCount').innerHTML = `<i class="fas fa-list-ol"></i> Lines: ${lineCount}`;
+    }
+
+    editor.on('change', updateLineCount);
+    updateLineCount();
+
+    // Format SQL query (basic implementation)
+    document.getElementById('formatQuery').addEventListener('click', function(e) {
+        e.preventDefault();
+        const sql = editor.getValue();
+        
+        // Very basic SQL formatting - in a real app, you'd use a proper SQL formatter library
+        try {
+            const formattedSql = sql
+                .replace(/\s+/g, ' ')
+                .replace(/ FROM /gi, '\nFROM ')
+                .replace(/ WHERE /gi, '\nWHERE ')
+                .replace(/ AND /gi, '\nAND ')
+                .replace(/ OR /gi, '\nOR ')
+                .replace(/ GROUP BY /gi, '\nGROUP BY ')
+                .replace(/ ORDER BY /gi, '\nORDER BY ')
+                .replace(/ LIMIT /gi, '\nLIMIT ')
+                .replace(/ JOIN /gi, '\nJOIN ')
+                .replace(/ ON /gi, '\nON ')
+                .replace(/ UNION /gi, '\nUNION ');
+            
+            editor.setValue(formattedSql);
+        } catch (e) {
+            console.error('Error formatting SQL:', e);
+        }
+    });
+
+    // Clear query button
+    document.getElementById('clearQuery').addEventListener('click', function(e) {
+        e.preventDefault();
+        editor.setValue('');
+        editor.focus();
+    });
+
+    // Save query to local storage
+    document.getElementById('queryForm').addEventListener('submit', function() {
+        const queryText = editor.getValue();
+        
+        try {
+            const recentQueries = JSON.parse(localStorage.getItem('recentQueries')) || [];
+            recentQueries.unshift({
+                text: queryText,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Keep only the last 20 queries
+            localStorage.setItem('recentQueries', JSON.stringify(recentQueries.slice(0, 20)));
+        } catch (e) {
+            console.error('Error saving recent query:', e);
+        }
+    });
+
+    // Download results as CSV
+    document.getElementById('downloadCSV').addEventListener('click', function() {
+        {% if success and result.schema is defined and result.data is defined %}
+            const csvContent = [
+                // Header row
+                [{% for column in result.schema %}'{{ column.name }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+                // Data rows
+                {% for row in result.data %}
+                [{% for column in result.schema %}'{{ row[column.name]|replace("'", "\\'") }}'{% if not loop.last %}, {% endif %}{% endfor %}]{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ].map(row => row.join(','));
+            
+            downloadBlob(csvContent.join('\n'), 'openathena-results.csv', 'text/csv');
+        {% endif %}
+    });
+
+    // Download results as JSON
+    document.getElementById('downloadJSON').addEventListener('click', function() {
+        {% if success and result.schema is defined and result.data is defined %}
+            const jsonData = JSON.stringify({{ result|tojson|safe }}, null, 2);
+            downloadBlob(jsonData, 'openathena-results.json', 'application/json');
+        {% endif %}
+    });
+
+    // Helper function to download a Blob
+    function downloadBlob(content, filename, contentType) {
+        const blob = new Blob([content], { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // Load tables for the browser sidebar
+    function loadTableBrowser() {
+        fetch("{{ url_for('tables') }}")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.text();
+            })
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const tableItems = doc.querySelectorAll('.table-item');
+                
+                let tableHtml = '<div class="list-group list-group-flush">';
+                
+                if (tableItems.length > 0) {
+                    tableItems.forEach(item => {
+                        const tableName = item.querySelector('.table-name').innerText;
+                        const columns = item.querySelector('.table-columns');
+                        
+                        tableHtml += `
+                        <div class="list-group-item table-browser-item">
+                            <div class="d-flex align-items-center table-item-header" data-bs-toggle="collapse" href="#table${tableName.replace(/[^a-zA-Z0-9]/g, '')}">
+                                <i class="fas fa-table me-2"></i>
+                                <span class="table-name">${tableName}</span>
+                                <i class="fas fa-chevron-down ms-auto"></i>
+                            </div>
+                            <div class="collapse mt-2" id="table${tableName.replace(/[^a-zA-Z0-9]/g, '')}">
+                                ${columns ? columns.outerHTML : ''}
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-outline-primary insert-table-btn" data-table="${tableName}">
+                                        Insert in Query
+                                    </button>
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                } else {
+                    tableHtml += `
+                        <div class="list-group-item">
+                            <span class="text-muted">No tables available</span>
+                        </div>`;
+                }
+                
+                tableHtml += '</div>';
+                document.getElementById('tableBrowser').innerHTML = tableHtml;
+                
+                // Add event listeners to the insert buttons
+                document.querySelectorAll('.insert-table-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const tableName = this.dataset.table;
+                        const cursorPos = editor.getCursor();
+                        editor.replaceRange(tableName, cursorPos);
+                        editor.focus();
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching tables:', error);
+                document.getElementById('tableBrowser').innerHTML = 
+                    '<p class="text-danger p-3">Error loading tables</p>';
+            });
+    }
+
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', function() {
+        loadTableBrowser();
+        
+        // Check for query parameter (from recent queries list)
+        const urlParams = new URLSearchParams(window.location.search);
+        const q = urlParams.get('q');
+        if (q) {
+            editor.setValue(q);
+        }
+    });
+</script>
+{% endblock %}

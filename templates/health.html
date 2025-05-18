@@ -355,7 +355,7 @@
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reloading...';
             this.disabled = true;
             
-            fetch(`${openathenaUrl}/catalog/reload`, {
+            fetch(`${openathenaUrl}/reload-catalog`, {
                 method: 'POST'
             })
             .then(response => response.json())

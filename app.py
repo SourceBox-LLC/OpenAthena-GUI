@@ -44,8 +44,10 @@ def query():
         try:
             # Execute query
             start_time = time.time()
+            # Always request JSON format from the server
             response = requests.post(
                 f"{openathena_url}/sql",
+                params={"format": "json"},  # Explicitly request JSON format
                 data=sql_query,
                 headers={"Content-Type": "text/plain", "Accept": "application/json"}
             )
